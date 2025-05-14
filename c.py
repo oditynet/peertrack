@@ -3,12 +3,12 @@ import os
 import hashlib
 import argparse
 import random
-
+file_size = 1024*4*1024
 
 class TorrentClient:
     def __init__(self, tracker_url):
         self.tracker_url = tracker_url
-        self.chunk_size = 30                                        # 10 bites
+        self.chunk_size = file_size
     def upload(self, file_path):
         file_name = os.path.basename(file_path)
         file_size = os.path.getsize(file_path)
@@ -31,7 +31,7 @@ class TorrentClient:
                     if peers:
                         # Выбираем случайный пир
                         selected_peer = random.choice(peers)
-                        print(selected_peer)
+                       # print(selected_peer)
                         peer_addr = f"{selected_peer['address']}"
                         try:
                             # Отправляем чанк на пир
@@ -54,34 +54,8 @@ class TorrentClient:
                 'chunks': chunks
             }
         )
-        print(f"Метаданные файла загружены: {response.status_code}")
-    """def upload(self, file_path):
-        file_name = os.path.basename(file_path)
-        file_size = os.path.getsize(file_path)
-        chunks = []
+        print(f"файл загружены: {response.status_code} на {peer_addr}")
 
-        with open(file_path, 'rb') as f:
-            file_hash = hashlib.sha256()
-            while True:
-                data = f.read(self.chunk_size)
-                print(f"Read file : {data}")
-                if not data:
-                    break
-                chunk_hash = hashlib.sha256(data).hexdigest()
-                chunks.append(chunk_hash)
-                file_hash.update(data)
-
-        response = requests.post(
-            f"{self.tracker_url}/announce_file",
-            json={
-                'file_hash': file_hash.hexdigest(),
-                'file_name': file_name,
-                'file_size': file_size,
-                'chunks': chunks
-            }
-        )
-        print(f"Upload status: {response.status_code}")
-"""
 
     def download(self, file_hash):
         response = requests.get(f"{self.tracker_url}/get_file/{file_hash}")
@@ -136,7 +110,7 @@ if __name__ == '__main__':
         client.upload(args.upload)
     elif args.download:
         client.download(args.download)
-        print(f"File saved")
+        #print(f"File saved")
     elif args.list_files:
         client.list_files()
     elif args.list_peers:

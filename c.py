@@ -10,7 +10,8 @@ class TorrentClient:
         self.tracker_url = tracker_url
         self.chunk_size = file_size
     def upload(self, file_path):
-        file_name = os.path.basename(file_path)
+        file_name = file_path#os.path.basename(file_path)
+        #file_name = os.path.basename(file_path)
         file_size = os.path.getsize(file_path)
         chunks = []
 
@@ -65,8 +66,10 @@ class TorrentClient:
 
         file_info = response.json()
         os.makedirs('downloads', exist_ok=True)
-
-        with open('downloads/'+file_info['name'], 'wb') as f:
+        
+        download_name = os.path.basename(file_info['name'])
+        with open('downloads/'+download_name, 'wb') as f:
+        #with open('downloads/'+file_info['name'], 'wb') as f:
             for chunk_hash in file_info['chunks']:
                 chunk_response = requests.get(f"{self.tracker_url}/get_chunk_peers/{chunk_hash}")
                 peers = chunk_response.json().get('peers', [])

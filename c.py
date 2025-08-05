@@ -3,17 +3,22 @@ import os
 import hashlib
 import argparse
 import random
-file_size = 1024*4*1024
+import time
+
+file_size = 1024 * 4 * 1024  # 4MB chunks
 
 class TorrentClient:
     def __init__(self, tracker_url):
         self.tracker_url = tracker_url
         self.chunk_size = file_size
-    def upload(self, file_path):
-        file_name = file_path#os.path.basename(file_path)
-        #file_name = os.path.basename(file_path)
+        self.max_retries = 3  # Максимальное количество попыток перезаливки
+        self.retry_delay = 5  # Задержка между попытками в секундах
+
+    def upload(self, file_path, retry_count=0):
+        file_name = os.path.basename(file_path)
         file_size = os.path.getsize(file_path)
         chunks = []
+        last_successful_peer = None
 
         with open(file_path, 'rb') as f:
             file_hash = hashlib.sha256()
@@ -25,39 +30,60 @@ class TorrentClient:
                 chunks.append(chunk_hash)
                 file_hash.update(data)
 
-                # Получаем список пиров
                 peers_response = requests.get(f"{self.tracker_url}/list_peers")
                 if peers_response.status_code == 200:
                     peers = peers_response.json().get('peers', [])
                     if peers:
-                        # Выбираем случайный пир
-                        selected_peer = random.choice(peers)
-                       # print(selected_peer)
-                        peer_addr = f"{selected_peer['address']}"
-                        try:
-                            # Отправляем чанк на пир
-                            response = requests.post(
-                                f"http://{peer_addr}/upload_chunk",
-                                files={'chunk': (chunk_hash, data)},
-                                timeout=5
-                            )
-                            if response.status_code != 200:
-                                print(f"Ошибка загрузки чанка {chunk_hash}")
-                        except Exception as e:
-                            print(f"Ошибка подключения к пиру {peer_addr}: {str(e)}")
+                        random.shuffle(peers)
+                        for peer in peers:
+                            peer_addr = f"{peer['address']}"
+                            try:
+                                response = requests.post(
+                                    f"http://{peer_addr}/upload_chunk",
+                                    files={'chunk': (chunk_hash, data)},
+                                    timeout=5
+                                )
+                                if response.status_code == 200:
+                                    last_successful_peer = peer_addr
+                                    break
+                                else:
+                                    print(f"Ошибка загрузки чанка {chunk_hash} на {peer_addr}")
+                            except Exception as e:
+                                print(f"Ошибка подключения к пиру {peer_addr}: {str(e)}")
 
-        response = requests.post(
-            f"{self.tracker_url}/announce_file",
-            json={
-                'file_hash': file_hash.hexdigest(),
-                'file_name': file_name,
-                'file_size': file_size,
-                'chunks': chunks
-            }
-        )
-        print(f"файл загружены: {response.status_code} на {peer_addr}")
-
-
+        # Отправка метаданных файла на трекер с возможностью повтора
+        for attempt in range(self.max_retries):
+            try:
+                response = requests.post(
+                    f"{self.tracker_url}/announce_file",
+                    json={
+                        'file_hash': file_hash.hexdigest(),
+                        'file_name': file_name,
+                        'file_size': file_size,
+                        'chunks': chunks
+                    },
+                    timeout=10
+                )
+                
+                if response.status_code == 200:
+                    if last_successful_peer:
+                        print(f"Файл успешно загружен. Статус трекера: {response.status_code}. Последний успешный пир: {last_successful_peer}")
+                    else:
+                        print(f"Файл успешно загружен. Статус трекера: {response.status_code}")
+                    return True
+                elif response.status_code == 500 and attempt < self.max_retries - 1:
+                    print(f"Ошибка трекера (500). Попытка {attempt + 1} из {self.max_retries}. Повтор через {self.retry_delay} сек...")
+                    time.sleep(self.retry_delay)
+                    continue
+                else:
+                    print(f"Ошибка загрузки файла. Код статуса: {response.status_code}")
+                    return False
+            except Exception as e:
+                print(f"Ошибка соединения с трекером: {str(e)}")
+                if attempt < self.max_retries - 1:
+                    time.sleep(self.retry_delay)
+                    continue
+                return False
     def download(self, file_hash):
         response = requests.get(f"{self.tracker_url}/get_file/{file_hash}")
         if response.status_code != 200:
@@ -66,10 +92,9 @@ class TorrentClient:
 
         file_info = response.json()
         os.makedirs('downloads', exist_ok=True)
-        
         download_name = os.path.basename(file_info['name'])
+
         with open('downloads/'+download_name, 'wb') as f:
-        #with open('downloads/'+file_info['name'], 'wb') as f:
             for chunk_hash in file_info['chunks']:
                 chunk_response = requests.get(f"{self.tracker_url}/get_chunk_peers/{chunk_hash}")
                 peers = chunk_response.json().get('peers', [])

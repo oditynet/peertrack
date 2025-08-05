@@ -6,3 +6,14 @@
 
 Продукт сырой. Не все ошибки отрабатываются. На хранилище могут оставиться мусор, который не убирается.
 <img src="https://github.com/oditynet/peertrack/blob/main/screen.png" title="example" width="800" />
+
+
+Загрузка потоком:
+```
+find /путь -type f -name "*.txt" -exec python c.py --upload '{}' \;
+```
+
+А если многопоточно,то:
+```
+find /путь/для/поиска -type f -print0 | parallel -0 -j 8 --bar 'python c.py --upload "{}"'
+```
